@@ -76,19 +76,22 @@ export default function Predict() {
               </p>
               <div className="bar"><div className={`bar-fill badge-${result.risk_level.toLowerCase()}`} style={{ width: `${result.churn_probability * 100}%` }} /></div>
 
-              <h3>Top factors</h3>
-              {result.top_factors.length === 0 ? (
-                <p className="muted">This model doesn't expose feature importances.</p>
-              ) : (
-                <table className="table">
-                  <thead><tr><th>Feature</th><th>Importance</th><th>Encoded value</th></tr></thead>
-                  <tbody>
-                    {result.top_factors.map((t) => (
-                      <tr key={t.feature}><td>{t.feature}</td><td>{t.importance}</td><td>{t.value}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              <h3>Why this prediction (SHAP)</h3>
+<table className="table">
+  <thead><tr><th>Feature</th><th>Value</th><th>Impact</th></tr></thead>
+  <tbody>
+    {result.top_factors.map((t) => (
+      <tr key={t.feature}>
+        <td>{t.feature}</td>
+        <td>{t.value}</td>
+        <td style={{ color: t.importance > 0 ? "#b91c1c" : "#15803d", fontWeight: 600 }}>
+          {t.importance > 0 ? "▲ +" : "▼ "}{t.importance.toFixed(3)}
+          <span className="muted small"> {t.direction}</span>
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
               <p className="muted small">Model: {result.model_used}</p>
             </>
           )}

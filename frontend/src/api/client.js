@@ -24,7 +24,9 @@ async function request(path, options = {}) {
 export const getHealth = () => request("/health");
 export const getDashboard = () => request("/dashboard");
 export const getModels = () => request("/models");
-
+// add next to getModels:
+export const getGlobalExplain = (topN = 15) => request(`/explain/global?top_n=${topN}`);
+export const getFigures = () => request("/explain/figures");
 export const predictOne = (features) =>
   request("/predict", {
     method: "POST",

@@ -1,41 +1,38 @@
-"""
-schemas.py
-----------
-Pydantic models for request validation and response shaping.
-CustomerFeatures mirrors the raw Telco dataset columns (minus target/ID)
-so the frontend form maps directly onto this.
-"""
+from typing import Literal, Optional
+from pydantic import BaseModel, Field
 
-from pydantic import BaseModel
-from typing import Optional
+YN = Literal["Yes", "No"]
+YNI = Literal["Yes", "No", "No internet service"]
 
 
 class CustomerFeatures(BaseModel):
-    gender: str
-    SeniorCitizen: int
-    Partner: str
-    Dependents: str
-    tenure: int
-    PhoneService: str
-    MultipleLines: str
-    InternetService: str
-    OnlineSecurity: str
-    OnlineBackup: str
-    DeviceProtection: str
-    TechSupport: str
-    StreamingTV: str
-    StreamingMovies: str
-    Contract: str
-    PaperlessBilling: str
-    PaymentMethod: str
-    MonthlyCharges: float
-    TotalCharges: float
+    gender: Literal["Male", "Female"]
+    SeniorCitizen: Literal[0, 1]
+    Partner: YN
+    Dependents: YN
+    tenure: int = Field(ge=0, le=120)
+    PhoneService: YN
+    MultipleLines: Literal["Yes", "No", "No phone service"]
+    InternetService: Literal["DSL", "Fiber optic", "No"]
+    OnlineSecurity: YNI
+    OnlineBackup: YNI
+    DeviceProtection: YNI
+    TechSupport: YNI
+    StreamingTV: YNI
+    StreamingMovies: YNI
+    Contract: Literal["Month-to-month", "One year", "Two year"]
+    PaperlessBilling: YN
+    PaymentMethod: Literal["Electronic check", "Mailed check",
+                           "Bank transfer (automatic)", "Credit card (automatic)"]
+    MonthlyCharges: float = Field(ge=0)
+    TotalCharges: float = Field(ge=0)
 
 
 class TopFactor(BaseModel):
     feature: str
-    importance: float
+    importance: float     # signed SHAP value; >0 pushes toward churn
     value: float
+    direction: str
 
 
 class PredictionResponse(BaseModel):
