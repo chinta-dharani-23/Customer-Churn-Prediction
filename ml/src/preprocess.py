@@ -85,6 +85,33 @@ CATEGORICAL_COLS = [
 
 NUMERIC_COLS = ["tenure", "MonthlyCharges", "TotalCharges"]
 
+# --- Engineered features from the implementation paper (Poudel et al., 2024) ---
+# engagement_score    : composite of normalised tenure and total charges
+# service_utilization : number of services the customer actually uses
+# KEEP IN SYNC with backend/app/ml/model_loader.py (_add_engineered_features),
+# which recomputes them at prediction time using the same constants.
+SERVICE_COLS = [
+    "PhoneService", "MultipleLines", "InternetService", "OnlineSecurity",
+    "OnlineBackup", "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies",
+]
+TENURE_MIN, TENURE_MAX = 0, 72
+TOTAL_CHARGES_MIN, TOTAL_CHARGES_MAX = 0, 8684.8
+
+
+def add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    tenure_n = (df["tenure"] - TENURE_MIN) / (TENURE_MAX - TENURE_MIN + 1e-9)
+    charges_n = (df["TotalCharges"] - TOTAL_CHARGES_MIN) / (TOTAL_CHARGES_MAX - TOTAL_CHARGES_MIN + 1e-9)
+    df["engagement_score"] = (tenure_n + charges_n) / 2
+    df["service_utilization"] = df[SERVICE_COLS].apply(
+        lambda row: sum(
+            1 for v in row
+            if str(v).strip().lower() not in ("no", "no phone service", "no internet service")
+        ),
+        axis=1,
+    )
+    return df
+
 
 def load_raw_data(path: str = RAW_PATH) -> pd.DataFrame:
     df = pd.read_excel(path)
@@ -103,6 +130,8 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     # Normalize target to binary 0/1
     df[TARGET_COL] = df[TARGET_COL].map({"Yes": 1, "No": 0})
+
+    df = add_engineered_features(df)
 
     return df
 
@@ -124,12 +153,23 @@ def build_preprocessor(df: pd.DataFrame):
     scaler = StandardScaler()
     df_encoded[NUMERIC_COLS] = scaler.fit_transform(df_encoded[NUMERIC_COLS])
 
+    # IMPORTANT: this must match the column order X_train/X_test actually
+    # have when passed to model.fit() in train.py (split_and_balance() just
+    # does df_encoded.drop(columns=[TARGET_COL]), which keeps df_encoded's
+    # natural column order). Previously this was hardcoded as
+    # CATEGORICAL_COLS + NUMERIC_COLS, which does NOT match that natural
+    # order (tenure/MonthlyCharges/TotalCharges are interleaved with the
+    # categorical columns, not grouped at the end) — that mismatch made
+    # every live prediction fail with an XGBoost "feature_names mismatch"
+    # error, since encode_customer() reorders columns using this list.
+    feature_order = [c for c in df_encoded.columns if c != TARGET_COL]
+
     preprocessor = {
         "encoders": encoders,
         "scaler": scaler,
         "categorical_cols": CATEGORICAL_COLS,
         "numeric_cols": NUMERIC_COLS,
-        "feature_order": CATEGORICAL_COLS + NUMERIC_COLS,
+        "feature_order": feature_order,
     }
 
     return preprocessor, df_encoded

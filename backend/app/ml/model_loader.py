@@ -72,9 +72,20 @@ def _add_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def normalize_senior_citizen(series: pd.Series) -> pd.Series:
+    """The API/frontend send SeniorCitizen as 0/1, but this project's dataset
+    (and therefore the fitted LabelEncoder) uses "No"/"Yes". Without this
+    mapping, 0/1 never match the encoder's classes and every customer is
+    silently treated as "No" — so senior citizens would never be scored as such."""
+    mapping = {"0": "No", "1": "Yes", "0.0": "No", "1.0": "Yes",
+               "no": "No", "yes": "Yes", "false": "No", "true": "Yes"}
+    return series.astype(str).str.strip().str.lower().map(mapping).fillna("No")
+
+
 def encode_customer(customer_dict: dict) -> pd.DataFrame:
     preprocessor = get_preprocessor()
     df = pd.DataFrame([customer_dict])
+    df["SeniorCitizen"] = normalize_senior_citizen(df["SeniorCitizen"])
     df = _add_engineered_features(df)
 
     for col in preprocessor["categorical_cols"]:
