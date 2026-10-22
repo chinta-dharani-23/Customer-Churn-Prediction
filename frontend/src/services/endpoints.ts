@@ -1,0 +1,20 @@
+/** Every backend path in one place, relative to VITE_API_BASE_URL. Edit here if the backend routes differ. */
+export const endpoints = {
+  health: '/health',
+  dashboard: '/dashboard',
+  datasetUpload: '/datasets/upload',
+  datasets: '/datasets',
+  datasetPreview: (id: string) => `/datasets/${id}/preview`,
+  customers: '/customers',
+  customer: (id: string) => `/customers/${id}`,
+  predictions: '/predict',
+  prediction: (id: string) => `/predict/${id}`,
+  models: '/models',
+  predictBatch: '/predict/batch',
+  modelMetrics: (name: string) => `/models/${name}/metrics`,
+  explainNarrative: '/explainability/narrative',
+  explainGlobal: '/explainability/global',
+  explainLocal: (predictionId: string) => `/explainability/local/${predictionId}`,
+  analyticsChurn: '/analytics/churn',
+  retentionHighRisk: '/retention/high-risk',
+} as const
