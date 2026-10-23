@@ -1,15 +1,16 @@
 """
 routers/dashboard.py
 ---------------------
-GET /dashboard — aggregate stats over everything logged in Neon so far.
+GET /dashboard — aggregate stats over everything logged in the database so far.
 This is what makes the database actually earn its place instead of
 sitting unused.
 """
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 from collections import Counter
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.models import Prediction
@@ -20,17 +21,17 @@ router = APIRouter()
 
 @router.get("/dashboard", response_model=DashboardStats)
 async def dashboard(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Prediction))
-    predictions = result.scalars().all()
+    # Only the three columns needed — not the (large) JSON input of every row.
+    rows = (await db.execute(
+        select(Prediction.churn_prediction, Prediction.risk_level, Prediction.created_at)
+    )).all()
 
-    total = len(predictions)
-    churned = sum(1 for p in predictions if p.churn_prediction)
+    total = len(rows)
+    churned = sum(1 for r in rows if r.churn_prediction)
     churn_rate = round(churned / total, 4) if total else 0.0
 
-    risk_counts = Counter(p.risk_level for p in predictions)
-
-    # Group by day for a simple trend line
-    by_day = Counter(p.created_at.date().isoformat() for p in predictions if p.created_at)
+    risk_counts = Counter(r.risk_level for r in rows)
+    by_day = Counter(r.created_at.date().isoformat() for r in rows if r.created_at)
     trend = [{"date": day, "count": count} for day, count in sorted(by_day.items())]
 
     return DashboardStats(

@@ -1,9 +1,10 @@
 """
 models.py
 ---------
-Two tables in Neon:
+Tables in the database (Neon Postgres or local SQLite):
   - predictions   : every prediction made, for the history dashboard
-  - model_metrics : the 4 models' scores, for the comparison page
+  - model_metrics : the 4 models' scores (reserved for the comparison page;
+                    /models currently serves ml/models/metrics.json directly)
 """
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, JSON, Boolean
@@ -26,7 +27,9 @@ class Prediction(Base):
     churn_probability = Column(Float, nullable=False)
     risk_level = Column(String, nullable=False)  # "Low" | "Medium" | "High"
     model_used = Column(String, nullable=False)
-    top_factors = Column(JSON, nullable=True)  # from explain.py, list of {feature, value}
+    # list of {feature, shap_value, direction, importance, value}  (SHAP)
+    # or      {feature, importance, value}                          (feature-importance fallback)
+    top_factors = Column(JSON, nullable=True)
 
     source = Column(String, default="single")  # "single" | "batch"
 

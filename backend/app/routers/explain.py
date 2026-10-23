@@ -1,37 +1,24 @@
-import os
-from functools import lru_cache
-import numpy as np
-import pandas as pd
-import shap
+"""
+routers/explain.py
+-------------------
+GET /explainability/global — mean |SHAP| per feature over a sample of customers.
+Computed once on first request, then cached in memory.
+"""
+
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
-from app.config import settings
-from app.ml.model_loader import get_model
+from app.ml.explainer import global_ranking
 
 router = APIRouter()
 
 
-@lru_cache(maxsize=1)
-def _global_ranking():
-    bg = pd.read_csv(settings.SHAP_BACKGROUND_PATH)
-    sv = shap.TreeExplainer(get_model()).shap_values(bg)
-    sv = sv[1] if isinstance(sv, list) else sv
-    mean_abs = np.abs(np.asarray(sv)).mean(axis=0)
-    order = np.argsort(mean_abs)[::-1]
-    return [{"feature": bg.columns[i], "mean_abs_shap": round(float(mean_abs[i]), 4)} for i in order]
-
-
-@router.get("/explain/global")
+@router.get("/explainability/global")
 async def explain_global(top_n: int = 15):
-    if not os.path.exists(settings.SHAP_BACKGROUND_PATH):
-        raise HTTPException(404, "shap_background.csv not found - run ml/src/train_paper.py first.")
-    return {"features": (await run_in_threadpool(_global_ranking))[:top_n]}
-
-
-@router.get("/explain/figures")
-async def explain_figures():
-    if not os.path.isdir(settings.REPORTS_DIR):
-        return {"figures": []}
-    names = sorted(f for f in os.listdir(settings.REPORTS_DIR) if f.endswith(".png"))
-    return {"figures": [{"name": n, "url": f"/reports/{n}"} for n in names]}
+    try:
+        data = await run_in_threadpool(global_ranking)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:  # noqa: BLE001  (e.g. shap not installed)
+        raise HTTPException(503, f"Global SHAP explanation is unavailable: {e}")
+    return {**data, "features": data["features"][: max(1, top_n)]}
