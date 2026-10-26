@@ -12,6 +12,7 @@ Security design:
 Provider: Google Gemini REST API (generateContent). Model name is LLM_MODEL.
 """
 
+import logging
 import time
 from collections import defaultdict, deque
 
@@ -25,6 +26,7 @@ from app.models import Prediction
 from app.schemas import NarrativeRequest, NarrativeResponse
 
 router = APIRouter()
+log = logging.getLogger("churn.narrative")
 
 DISCLAIMER = (
     "AI-generated summary of the model's SHAP results. It describes what the model weighed, "
@@ -81,17 +83,37 @@ async def narrative(body: NarrativeRequest, request: Request, db: AsyncSession =
     payload = {
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": f"{_facts(row)}\n\nQuestion: {question}"}]}],
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024},
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 4096},
     }
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.LLM_MODEL}:generateContent"
 
     try:
         async with httpx.AsyncClient(timeout=45) as client:
             r = await client.post(url, json=payload, headers={"x-goog-api-key": settings.LLM_API_KEY})
-        r.raise_for_status()
-        parts = r.json()["candidates"][0]["content"]["parts"]
+        if r.status_code >= 400:
+            # Full reason goes to the backend terminal (never to the browser, never the key).
+            log.error("Gemini returned %s for model '%s': %s", r.status_code, settings.LLM_MODEL, r.text[:500])
+            if r.status_code == 404:
+                hint = f"Model '{settings.LLM_MODEL}' was not found. Change LLM_MODEL in backend/.env (for example gemini-2.5-flash) and restart."
+            elif r.status_code in (400, 401, 403):
+                hint = "The AI service rejected the API key or request. Check LLM_API_KEY in backend/.env and restart."
+            elif r.status_code == 429:
+                hint = "The AI service quota is used up. Wait a minute and try again."
+            else:
+                hint = "The AI service could not produce an explanation right now. Please try again."
+            raise HTTPException(502, hint)
+        candidate = r.json()["candidates"][0]
+        parts = candidate["content"]["parts"]
         text = "".join(p.get("text", "") for p in parts).strip()
-    except (httpx.HTTPError, KeyError, IndexError, ValueError):
+        if candidate.get("finishReason") == "MAX_TOKENS" and text:
+            # Reply was cut off (thinking models spend part of the token budget):
+            # keep only complete sentences instead of showing a half sentence.
+            cut = max(text.rfind(". "), text.rfind(".\n"), text.rfind("? "), text.rfind("! "))
+            text = text[: cut + 1] if cut > 40 else text.rstrip(" ,;(") + "..."
+    except HTTPException:
+        raise
+    except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+        log.error("Gemini call failed: %r", exc)
         raise HTTPException(502, "The AI service could not produce an explanation right now. Please try again.")
 
     if not text:
